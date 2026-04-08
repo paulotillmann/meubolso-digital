@@ -23,10 +23,22 @@ interface ModalEditarTransacaoProps {
 
 const especiesValidas = ['PIX', 'cartão de crédito', 'cartão de débito', 'dinheiro', 'boleto', 'cheque'];
 
+// ── Helpers Máscara Moeda ──────────────────────────────────────
+const maskCurrency = (v: string) => {
+  const digits = v.replace(/\D/g, '');
+  const num = parseFloat(digits) / 100;
+  if (isNaN(num)) return '';
+  return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+};
+const parseCurrency = (v: string) => {
+  return parseFloat(v.replace(/[^\d,]/g, '').replace(',', '.')) || 0;
+};
+
 const ModalEditarTransacao: React.FC<ModalEditarTransacaoProps> = ({ transacao, onClose, onSuccess }) => {
   const [tipo, setTipo]                 = useState<'DESPESAS' | 'RECEITAS'>(transacao.tipo_transacao);
   const [referente, setReferente]       = useState(transacao.referente);
-  const [valor, setValor]               = useState(String(transacao.valor));
+  // Inicializa com o valor formatado. Multiplicamos por 100 para converter para centavos para a máscara.
+  const [valor, setValor]               = useState(maskCurrency(String(transacao.valor * 100)));
   const [categoriaNome, setCategoriaNome] = useState(transacao.categoria_nome ?? '');
   const [especie, setEspecie]           = useState(transacao.especie ?? 'PIX');
   const [dataStr, setDataStr]           = useState(transacao.data ? transacao.data.split('T')[0] : '');
@@ -44,7 +56,8 @@ const ModalEditarTransacao: React.FC<ModalEditarTransacaoProps> = ({ transacao, 
     setError('');
 
     if (!referente.trim())                                         return setError('Informe a descrição (referente).');
-    if (!valor || isNaN(Number(valor)) || Number(valor) <= 0)      return setError('Informe um valor numérico válido.');
+    const valorNum = parseCurrency(valor);
+    if (valorNum <= 0)                                             return setError('Informe um valor numérico válido.');
     if (!categoriaNome.trim())                                     return setError('Informe a categoria.');
     if (!dataStr)                                                  return setError('Informe a data.');
 
@@ -53,7 +66,7 @@ const ModalEditarTransacao: React.FC<ModalEditarTransacaoProps> = ({ transacao, 
       const updates = {
         tipo_transacao: tipo,
         referente: referente.trim(),
-        valor: Number(valor),
+        valor: valorNum,
         categoria_nome: categoriaNome.trim(),
         especie,
         data: dataStr,
@@ -142,9 +155,9 @@ const ModalEditarTransacao: React.FC<ModalEditarTransacaoProps> = ({ transacao, 
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Valor (R$)</label>
                 <input
-                  type="number" step="0.01" className="form-input"
-                  value={valor} onChange={e => setValor(e.target.value)}
-                  placeholder="0.00"
+                  type="text" className="form-input"
+                  value={valor} onChange={e => setValor(maskCurrency(e.target.value))}
+                  placeholder="R$ 0,00"
                   style={{ paddingLeft: 'var(--spacing-md)' }}
                 />
               </div>

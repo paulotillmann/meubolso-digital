@@ -58,7 +58,12 @@ const App: React.FC = () => {
       if (event === 'SIGNED_IN' && s) {
         if (isMounted) setIsProcessingEntry(true);
         try {
-          const profile = await authHelpers.getProfile(s.user.id);
+          // Timeout de 5s para buscar profile - evita travar a tela de login
+          const profilePromise = authHelpers.getProfile(s.user.id);
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 5000));
+          
+          const profile = await Promise.race([profilePromise, timeoutPromise]) as any;
+
           if (profile && profile.is_active === false) {
             await authHelpers.signOut();
             if (isMounted) {
@@ -67,10 +72,13 @@ const App: React.FC = () => {
             }
             return;
           }
-        } catch {}
-        if (isMounted) {
-          setSession(s);
-          setIsProcessingEntry(false);
+        } catch (err) {
+          console.error('[Auth Listener] Erro ao validar perfil ou timeout:', err);
+        } finally {
+          if (isMounted) {
+            setSession(s);
+            setIsProcessingEntry(false);
+          }
         }
       } else if (event === 'SIGNED_OUT') {
         if (isMounted) {

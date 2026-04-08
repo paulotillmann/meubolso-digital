@@ -8,7 +8,7 @@ import {
   TrendingUp, TrendingDown, Wallet, Target, LogOut,
   Calendar, RefreshCw, BarChart2, PieChart as PieIcon,
   ArrowUpRight, ArrowDownRight, Activity, Filter,
-  CreditCard, Plus, List,
+  CreditCard, Plus, List, ArrowRight,
 } from 'lucide-react';
 import { supabase, authHelpers } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
@@ -252,14 +252,6 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
             <Plus size={16} /> Nova Transação
           </button>
 
-          <button
-            className="btn btn--secondary btn--auto"
-            style={{ fontSize: 13, gap: 6 }}
-            onClick={onOpenTransacoes}
-            title="Ver e gerenciar todas as transações"
-          >
-            <List size={16} /> Transações
-          </button>
 
           {/* Avatar clicável */}
           <button
@@ -524,11 +516,13 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
           {/* Transações recentes */}
           <motion.div className="chart-card" variants={fadeUp} custom={7} initial="hidden" animate="visible">
             <div className="chart-card__header">
-              <div>
-                <h2 className="chart-card__title">Últimas Transações</h2>
-                <p className="chart-card__subtitle">Mais recentes do período</p>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <Activity size={16} style={{ color: 'var(--color-brand-cyan)' }} />
+                <div>
+                  <h2 className="chart-card__title">Últimas Transações</h2>
+                  <p className="chart-card__subtitle">Mais recentes do período</p>
+                </div>
               </div>
-              <Activity size={16} style={{ color: 'var(--color-brand-cyan)' }} />
             </div>
 
             {recentTransacoes.length === 0 ? (
@@ -560,6 +554,17 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
                     </div>
                   );
                 })}
+
+                <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid var(--color-border)' }}>
+                  <button
+                    className="btn btn--primary"
+                    style={{ width: '100%', gap: 8, height: 46 }}
+                    onClick={onOpenTransacoes}
+                  >
+                    <List size={18} />
+                    Ver todas as transações
+                  </button>
+                </div>
               </div>
             )}
           </motion.div>

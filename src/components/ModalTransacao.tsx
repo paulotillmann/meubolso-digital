@@ -9,6 +9,17 @@ interface ModalTransacaoProps {
   onSuccess: () => void;
 }
 
+// ── Helpers Máscara Moeda ──────────────────────────────────────
+const maskCurrency = (v: string) => {
+  const digits = v.replace(/\D/g, '');
+  const num = parseFloat(digits) / 100;
+  if (isNaN(num)) return '';
+  return num.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+};
+const parseCurrency = (v: string) => {
+  return parseFloat(v.replace(/[^\d,]/g, '').replace(',', '.')) || 0;
+};
+
 const ModalTransacao: React.FC<ModalTransacaoProps> = ({ userId, onClose, onSuccess }) => {
   const [tipo, setTipo] = useState<'DESPESAS' | 'RECEITAS'>('DESPESAS');
   const [referente, setReferente] = useState('');
@@ -26,7 +37,8 @@ const ModalTransacao: React.FC<ModalTransacaoProps> = ({ userId, onClose, onSucc
     setError('');
 
     if (!referente.trim()) return setError('Informe a descrição (referente).');
-    if (!valor || isNaN(Number(valor)) || Number(valor) <= 0) return setError('Informe um valor numérico válido.');
+    const valorNum = parseCurrency(valor);
+    if (valorNum <= 0) return setError('Informe um valor numérico válido.');
     if (!categoriaNome.trim()) return setError('Informe a categoria.');
     if (!dataStr) return setError('Informe a data.');
 
@@ -36,7 +48,7 @@ const ModalTransacao: React.FC<ModalTransacaoProps> = ({ userId, onClose, onSucc
         user_id: userId,
         tipo_transacao: tipo,
         referente: referente.trim(),
-        valor: Number(valor),
+        valor: valorNum,
         categoria_nome: categoriaNome.trim(),
         especie,
         data: dataStr,
@@ -117,7 +129,13 @@ const ModalTransacao: React.FC<ModalTransacaoProps> = ({ userId, onClose, onSucc
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Valor (R$)</label>
-                <input type="number" step="0.01" className="form-input" value={valor} onChange={e => setValor(e.target.value)} placeholder="0.00" />
+                <input
+                  type="text"
+                  className="form-input"
+                  value={valor}
+                  onChange={e => setValor(maskCurrency(e.target.value))}
+                  placeholder="R$ 0,00"
+                />
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Data</label>
