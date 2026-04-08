@@ -8,7 +8,7 @@ import {
   TrendingUp, TrendingDown, Wallet, Target, LogOut,
   Calendar, RefreshCw, BarChart2, PieChart as PieIcon,
   ArrowUpRight, ArrowDownRight, Activity, Filter,
-  CreditCard, Plus,
+  CreditCard, Plus, List,
 } from 'lucide-react';
 import { supabase, authHelpers } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
@@ -56,9 +56,10 @@ const COLORS_PIE = [
 interface DashboardProps {
   session: Session;
   onOpenProfile: () => void;
+  onOpenTransacoes: () => void;
 }
 
-const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile }) => {
+const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTransacoes }) => {
   const [transacoes, setTransacoes] = useState<Transacao[]>([]);
   const [loading, setLoading]       = useState(true);
   const [activeChart, setActiveChart] = useState<'area' | 'bar'>('area');
@@ -249,6 +250,15 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile }) => {
             onClick={() => setIsModalOpen(true)}
           >
             <Plus size={16} /> Nova Transação
+          </button>
+
+          <button
+            className="btn btn--secondary btn--auto"
+            style={{ fontSize: 13, gap: 6 }}
+            onClick={onOpenTransacoes}
+            title="Ver e gerenciar todas as transações"
+          >
+            <List size={16} /> Transações
           </button>
 
           {/* Avatar clicável */}
@@ -527,7 +537,12 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile }) => {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                 {recentTransacoes.map(t => {
                   const isRec = t.tipo_transacao === 'RECEITAS';
-                  const d = new Date(t.data ?? t.created_at);
+                  const d = (() => {
+                    const val = t.data ?? t.created_at;
+                    if (!val) return new Date();
+                    const dateVal = val.includes('T') ? val : `${val}T12:00:00`;
+                    return new Date(dateVal);
+                  })();
                   return (
                     <div key={t.id} className="tx-row">
                       <div className="tx-row__icon" style={{ background: isRec ? '#00c89620' : '#f8717120', color: isRec ? '#00c896' : '#f87171' }}>

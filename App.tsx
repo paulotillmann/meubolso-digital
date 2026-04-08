@@ -1,13 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import './src/styles/design-system.css';
-import LoginPage    from './src/pages/Login';
-import RegisterPage from './src/pages/Register';
-import Dashboard    from './src/pages/Dashboard';
-import ProfilePage  from './src/pages/Profile';
+import LoginPage      from './src/pages/Login';
+import RegisterPage   from './src/pages/Register';
+import Dashboard      from './src/pages/Dashboard';
+import ProfilePage    from './src/pages/Profile';
+import Transacoes     from './src/pages/Transacoes';
 import { supabase, authHelpers } from './src/lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 
-type Page = 'login' | 'register' | 'dashboard' | 'profile';
+type Page = 'login' | 'register' | 'dashboard' | 'profile' | 'transacoes';
 
 const App: React.FC = () => {
   const [page, setPage]             = useState<Page>('login');
@@ -103,10 +104,19 @@ const App: React.FC = () => {
         />
       );
     }
+    if (page === 'transacoes') {
+      return (
+        <Transacoes
+          session={session}
+          onBack={() => setPage('dashboard')}
+        />
+      );
+    }
     return (
       <Dashboard
         session={session}
         onOpenProfile={() => setPage('profile')}
+        onOpenTransacoes={() => setPage('transacoes')}
       />
     );
   }

@@ -12,10 +12,10 @@ interface LoginProps {
 }
 
 const LoginPage: React.FC<LoginProps> = ({ onSignUp, onLoginSuccess, externalError, onClearExternalError, isProcessingAuth = false }) => {
-  const [email, setEmail]       = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [loading, setLoading]   = useState(false);
-  const [error, setError]       = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
   // Exibe erro externo (ex: conta inativada) vindo do App.tsx
@@ -58,13 +58,15 @@ const LoginPage: React.FC<LoginProps> = ({ onSignUp, onLoginSuccess, externalErr
 
   /* ── Framer Motion ── */
   const cardVariants = {
-    hidden:  { opacity: 0, y: 28, scale: 0.97 },
-    visible: { opacity: 1, y: 0, scale: 1,
-      transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] } },
+    hidden: { opacity: 0, y: 28, scale: 0.97 },
+    visible: {
+      opacity: 1, y: 0, scale: 1,
+      transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] }
+    },
   };
 
   const itemVariants = {
-    hidden:  { opacity: 0, y: 12 },
+    hidden: { opacity: 0, y: 12 },
     visible: (i: number) => ({
       opacity: 1, y: 0,
       transition: { delay: i * 0.08, duration: 0.4, ease: 'easeOut' },
