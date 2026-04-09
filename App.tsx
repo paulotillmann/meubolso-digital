@@ -95,6 +95,15 @@ const App: React.FC = () => {
     };
   }, []);
 
+  useEffect(() => {
+    if (page === 'login' || page === 'register') {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    } else {
+      const saved = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', saved);
+    }
+  }, [page]);
+
   if (loading) {
     return (
       <div className="page-center">

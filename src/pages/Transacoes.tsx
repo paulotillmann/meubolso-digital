@@ -4,11 +4,14 @@ import {
   ArrowLeft, Search, Calendar, Filter, CreditCard,
   Pencil, Trash2, ChevronLeft, ChevronRight, RefreshCw,
   ArrowUpRight, ArrowDownRight, AlertTriangle, X,
-  ListFilter, TrendingUp, TrendingDown,
+  ListFilter, TrendingUp, TrendingDown, FileText, FileDown,
 } from 'lucide-react';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import { supabase } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import ModalEditarTransacao from '../components/ModalEditarTransacao';
+import ThemeToggle from '../components/ThemeToggle';
 
 // ── Tipos ──────────────────────────────────────────────────────
 interface Transacao {
@@ -122,6 +125,81 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
     [filtered]
   );
 
+  // ── Exportação ────────────────────────────────────────────────
+  const exportarCSV = () => {
+    if (filtered.length === 0) return;
+    const headers = ['Data', 'Referente', 'Categoria', 'Espécie', 'Tipo', 'Valor'];
+    const rows = filtered.map(t => {
+      const val = t.data ?? t.created_at;
+      let dataTx = t.data_text ?? '-';
+      if (val) {
+        const d = new Date(val.includes('T') ? val : `${val}T12:00:00`);
+        if (!isNaN(d.getTime())) dataTx = d.toLocaleDateString('pt-BR');
+      }
+      return [
+        dataTx,
+        `"${t.referente}"`,
+        `"${t.categoria_nome || ''}"`,
+        `"${t.especie || ''}"`,
+        t.tipo_transacao === 'RECEITAS' ? 'Receita' : 'Despesa',
+        `"${fmt(Number(t.valor)).replace(/\u00A0/g, ' ')}"`
+      ];
+    });
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" + [headers.join(';'), ...rows.map(e => e.join(';'))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute("download", `extrato_${new Date().toISOString().substring(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const exportarPDF = () => {
+    if (filtered.length === 0) return;
+    const doc = new jsPDF();
+    doc.setFontSize(16);
+    doc.text('Extrato de Movimentações - MeuBolso.digital', 14, 20);
+    doc.setFontSize(10);
+    doc.text(`Período selecionado: ${startDate.split('-').reverse().join('/')} a ${endDate.split('-').reverse().join('/')}`, 14, 28);
+    
+    // Resume totais
+    doc.text(`Total Filtrado: ${filtered.length} transações`, 14, 34);
+    doc.text(`Receitas: ${fmt(totalReceitas)}`, 14, 40);
+    doc.text(`Despesas: ${fmt(totalDespesas)}`, 14, 46);
+    doc.text(`Saldo do Período: ${fmt(totalReceitas - totalDespesas)}`, 14, 52);
+
+    const tableColumn = ["Data", "Referente", "Categoria", "Espécie", "Tipo", "Valor"];
+    const tableRows = filtered.map(t => {
+      const val = t.data ?? t.created_at;
+      let dataTx = t.data_text ?? '-';
+      if (val) {
+        const d = new Date(val.includes('T') ? val : `${val}T12:00:00`);
+        if (!isNaN(d.getTime())) dataTx = d.toLocaleDateString('pt-BR');
+      }
+      return [
+        dataTx,
+        t.referente,
+        t.categoria_nome || '-',
+        t.especie || '-',
+        t.tipo_transacao === 'RECEITAS' ? 'Receita' : 'Despesa',
+        fmt(Number(t.valor)).replace(/\u00A0/g, ' ')
+      ];
+    });
+
+    autoTable(doc, {
+      startY: 60,
+      head: [tableColumn],
+      body: tableRows,
+      theme: 'grid',
+      headStyles: { fillColor: [15, 30, 53] },
+      alternateRowStyles: { fillColor: [244, 246, 248] },
+      styles: { fontSize: 8 },
+    });
+
+    doc.save(`extrato_${new Date().toISOString().substring(0, 10)}.pdf`);
+  };
+
   // Paginação
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
   const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
@@ -144,6 +222,7 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
       fetchTransacoes();
     } catch (err: any) {
       setDeleteError(err.message || 'Erro ao excluir.');
+    } finally {
       setLoadingDelete(false);
     }
   };
@@ -171,7 +250,8 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
           </span>
         </div>
 
-        <div className="dashboard-header__right">
+        <div className="dashboard-header__right" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <ThemeToggle />
           <button className="btn-back" onClick={onBack} style={{ marginRight: 8 }}>
             <ArrowLeft size={15} />
             Voltar ao Dashboard
@@ -305,6 +385,28 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
             >
               {fmt(totalReceitas - totalDespesas)}
             </span>
+          </div>
+
+          {/* Botões de exportação */}
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
+            <button
+              className="btn btn--secondary btn--auto"
+              onClick={exportarCSV}
+              disabled={filtered.length === 0}
+              style={{ padding: '8px 14px', fontSize: 13, height: 42, background: 'var(--color-bg-card)' }}
+              title="Exportar dados para Excel (CSV)"
+            >
+              <FileText size={14} /> CSV
+            </button>
+            <button
+              className="btn btn--secondary btn--auto"
+              onClick={exportarPDF}
+              disabled={filtered.length === 0}
+              style={{ padding: '8px 14px', fontSize: 13, height: 42, background: 'var(--color-bg-card)' }}
+              title="Baixar relatório em PDF"
+            >
+              <FileDown size={14} /> PDF
+            </button>
           </div>
         </motion.div>
 

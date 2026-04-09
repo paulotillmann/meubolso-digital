@@ -7,6 +7,7 @@ import {
 import { supabase, authHelpers } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import type { Profile } from '../lib/supabase';
+import ThemeToggle from '../components/ThemeToggle';
 
 interface ProfilePageProps {
   session: Session;
@@ -168,7 +169,8 @@ const ProfilePage: React.FC<ProfilePageProps> = ({ session, onBack }) => {
             Meu Perfil
           </span>
         </div>
-        <div className="dashboard-header__right">
+        <div className="dashboard-header__right" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <ThemeToggle />
           <button className="btn btn--ghost btn--auto" onClick={onBack}>
             <ArrowLeft size={14} /> Voltar
           </button>

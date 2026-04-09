@@ -13,6 +13,7 @@ import {
 import { supabase, authHelpers } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import ModalTransacao from '../components/ModalTransacao';
+import ThemeToggle from '../components/ThemeToggle';
 
 // ── Tipos ──────────────────────────────────────────────────────
 interface Transacao {
@@ -201,10 +202,10 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
     if (!active || !payload?.length) return null;
     return (
       <div style={{
-        background: '#0f1e35', border: '1px solid #1e3255', borderRadius: 10,
+        background: 'var(--color-bg-card)', border: '1px solid var(--color-border)', borderRadius: 10,
         padding: '10px 14px', fontSize: 12,
       }}>
-        <p style={{ color: '#8899bb', marginBottom: 6, fontWeight: 600 }}>{label}</p>
+        <p style={{ color: 'var(--color-text-secondary)', marginBottom: 6, fontWeight: 600 }}>{label}</p>
         {payload.map((p, i) => (
           <p key={i} style={{ color: p.color, marginBottom: 2 }}>
             {p.name}: <strong>{fmt(p.value)}</strong>
@@ -217,8 +218,8 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
   const PieTooltip = ({ active, payload }: { active?: boolean; payload?: Array<{ name: string; value: number }> }) => {
     if (!active || !payload?.length) return null;
     return (
-      <div style={{ background: '#0f1e35', border: '1px solid #1e3255', borderRadius: 10, padding: '8px 12px', fontSize: 12 }}>
-        <p style={{ color: '#f0f4ff', fontWeight: 600 }}>{payload[0].name}</p>
+      <div style={{ background: 'var(--color-bg-card)', border: '1px solid var(--color-border)', borderRadius: 10, padding: '8px 12px', fontSize: 12 }}>
+        <p style={{ color: 'var(--color-text-primary)', fontWeight: 600 }}>{payload[0].name}</p>
         <p style={{ color: '#00c896' }}>{fmt(payload[0].value)}</p>
       </div>
     );
@@ -254,6 +255,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
 
 
           {/* Avatar clicável */}
+          <ThemeToggle />
           <button
             onClick={onOpenProfile}
             title={`Perfil: ${session.user.email}`}
@@ -431,20 +433,20 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
                     </linearGradient>
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e3255" />
-                  <XAxis dataKey="mes" tick={{ fill: '#8899bb', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tickFormatter={shortFmt} tick={{ fill: '#8899bb', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="mes" tick={{ fill: 'var(--color-text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={shortFmt} tick={{ fill: 'var(--color-text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Legend formatter={v => <span style={{ color: '#8899bb', fontSize: 12 }}>{v}</span>} />
+                  <Legend formatter={v => <span style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>{v}</span>} />
                   <Area type="monotone" dataKey="receitas" name="Receitas" stroke="#00c896" strokeWidth={2} fill="url(#gradReceitas)" dot={{ r: 3, fill: '#00c896' }} />
                   <Area type="monotone" dataKey="despesas" name="Despesas" stroke="#f87171"  strokeWidth={2} fill="url(#gradDespesas)"  dot={{ r: 3, fill: '#f87171' }} />
                 </AreaChart>
               ) : (
                 <BarChart data={monthlyData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#1e3255" />
-                  <XAxis dataKey="mes" tick={{ fill: '#8899bb', fontSize: 11 }} axisLine={false} tickLine={false} />
-                  <YAxis tickFormatter={shortFmt} tick={{ fill: '#8899bb', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <XAxis dataKey="mes" tick={{ fill: 'var(--color-text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
+                  <YAxis tickFormatter={shortFmt} tick={{ fill: 'var(--color-text-secondary)', fontSize: 11 }} axisLine={false} tickLine={false} />
                   <Tooltip content={<CustomTooltip />} />
-                  <Legend formatter={v => <span style={{ color: '#8899bb', fontSize: 12 }}>{v}</span>} />
+                  <Legend formatter={v => <span style={{ color: 'var(--color-text-secondary)', fontSize: 12 }}>{v}</span>} />
                   <Bar dataKey="receitas" name="Receitas" fill="#00c896" radius={[4,4,0,0]} />
                   <Bar dataKey="despesas" name="Despesas" fill="#f87171"  radius={[4,4,0,0]} />
                 </BarChart>

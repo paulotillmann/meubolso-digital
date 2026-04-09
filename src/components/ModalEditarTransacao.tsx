@@ -103,9 +103,6 @@ const ModalEditarTransacao: React.FC<ModalEditarTransacaoProps> = ({ transacao, 
           <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
             <div>
               <h2 style={{ fontSize: 18, color: 'var(--color-text-primary)', margin: 0 }}>Editar Transação</h2>
-              <p style={{ fontSize: 12, color: 'var(--color-text-muted)', marginTop: 2 }}>
-                ID: {transacao.id.slice(0, 8)}…
-              </p>
             </div>
             <button onClick={onClose} style={{ background: 'none', border: 'none', color: 'var(--color-text-muted)', cursor: 'pointer', padding: 4 }}>
               <X size={20} />
