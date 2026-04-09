@@ -1594,3 +1594,13 @@ body {
   -webkit-backdrop-filter: none;
   border-bottom: 1px solid #1e3255;
 }
+
+/* Cabeçalho da tabela de transações preto no Light Mode */
+[data-theme="light"] .tx-table-header {
+  background: #0f172a; /* Preto/Dark Navy garantindo contraste sem ofuscar 100% puro */
+  border-bottom: 1px solid #1e293b;
+}
+
+[data-theme="light"] .tx-table-header .tx-th {
+  color: #f8fafc; /* Contraste claro para o fundo escuro */
+}
