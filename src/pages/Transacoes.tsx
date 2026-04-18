@@ -44,13 +44,29 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Filtros
-  const now = new Date();
+  // Helper timezone-safe YYYY-MM-DD
+  const getLocalDateString = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  // Filtros — padrão: Mês atual
   const [startDate, setStartDate] = useState(() => {
-    const d = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-    return d.toISOString().split('T')[0];
+    const now = new Date();
+    return getLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
   });
-  const [endDate, setEndDate] = useState(() => now.toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(() => {
+    const now = new Date();
+    return getLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  });
+
+  const handleMesAtual = () => {
+    const now = new Date();
+    setStartDate(getLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
+    setEndDate(getLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
+  };
   const [busca, setBusca] = useState('');
   const [selectedTipo, setSelectedTipo] = useState('');   // '' | 'RECEITAS' | 'DESPESAS'
   const [selectedCat, setSelectedCat] = useState('');
@@ -350,15 +366,23 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
             </select>
           </div>
 
-          <button
-            className="btn btn--secondary btn--auto"
-            onClick={fetchTransacoes}
-            disabled={loading}
-            style={{ marginLeft: 'auto', flexShrink: 0 }}
-          >
-            <RefreshCw size={14} className={loading ? 'spin' : ''} />
-            {loading ? 'Carregando…' : 'Atualizar'}
-          </button>
+          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
+            <button
+              className="btn btn--secondary btn--auto"
+              onClick={handleMesAtual}
+              title="Selecionar mês atual"
+            >
+              <Calendar size={14} /> Mês Atual
+            </button>
+            <button
+              className="btn btn--secondary btn--auto"
+              onClick={fetchTransacoes}
+              disabled={loading}
+            >
+              <RefreshCw size={14} className={loading ? 'spin' : ''} />
+              {loading ? 'Carregando…' : 'Atualizar'}
+            </button>
+          </div>
         </motion.div>
 
         {/* ════ RESUMO ════ */}

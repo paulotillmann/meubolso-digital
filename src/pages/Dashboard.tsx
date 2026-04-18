@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { motion } from 'framer-motion';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import {
   AreaChart, Area, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend,
@@ -8,7 +8,7 @@ import {
   TrendingUp, TrendingDown, Wallet, Target, LogOut,
   Calendar, RefreshCw, BarChart2, PieChart as PieIcon,
   ArrowUpRight, ArrowDownRight, Activity, Filter,
-  CreditCard, Plus, List, ArrowRight,
+  CreditCard, Plus, List, Zap,
 } from 'lucide-react';
 import { supabase, authHelpers } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
@@ -62,35 +62,68 @@ interface DashboardProps {
 
 const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTransacoes }) => {
   const [transacoes, setTransacoes] = useState<Transacao[]>([]);
+  const [transacoesAnuais, setTransacoesAnuais] = useState<Transacao[]>([]);
   const [loading, setLoading]       = useState(true);
   const [activeChart, setActiveChart] = useState<'area' | 'bar'>('area');
-  const [avatarUrl, setAvatarUrl]   = useState<string | null>(null);  // avatar do header
+  const [avatarUrl, setAvatarUrl]   = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [realtimeFlash, setRealtimeFlash] = useState(false); // pisca ao receber evento
+  const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Filtros — padrão: últimos 12 meses
-  const now = new Date();
+  // Helper timezone-safe YYYY-MM-DD
+  const getLocalDateString = (d: Date) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  };
+
+  // Filtros — padrão: Mês atual
   const [startDate, setStartDate] = useState(() => {
-    const d = new Date(now.getFullYear(), now.getMonth() - 11, 1);
-    return d.toISOString().split('T')[0];
+    const now = new Date();
+    return getLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1));
   });
-  const [endDate, setEndDate]     = useState(() => now.toISOString().split('T')[0]);
-  const [selectedCat, setSelectedCat] = useState('');  // '' = todas
-  const [selectedEsp, setSelectedEsp] = useState('');  // '' = todas
+  const [endDate, setEndDate]     = useState(() => {
+    const now = new Date();
+    return getLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  });
+  const [selectedCat, setSelectedCat] = useState('');
+  const [selectedEsp, setSelectedEsp] = useState('');
+
+  const handleMesAtual = () => {
+    const now = new Date();
+    setStartDate(getLocalDateString(new Date(now.getFullYear(), now.getMonth(), 1)));
+    setEndDate(getLocalDateString(new Date(now.getFullYear(), now.getMonth() + 1, 0)));
+  };
 
   // ── Busca transações ─────────────────────────────────────────
   const fetchTransacoes = useCallback(async () => {
     setLoading(true);
     try {
-      // Filtra pelo campo 'data' (data real da transação)
-      const { data, error } = await supabase
-        .from('transacoes')
-        .select('id,tipo_transacao,referente,categoria_nome,especie,valor,data,data_text,created_at')
-        .gte('data', `${startDate}T00:00:00+00:00`)
-        .lte('data', `${endDate}T23:59:59+00:00`)
-        .order('data', { ascending: true });
+      const currentYear = new Date().getFullYear();
+      const startOfYear = `${currentYear}-01-01`;
+      const endOfYear = `${currentYear}-12-31`;
 
-      if (error) throw error;
-      setTransacoes((data ?? []) as Transacao[]);
+      const [resPeriodo, resAnual] = await Promise.all([
+        supabase
+          .from('transacoes')
+          .select('id,tipo_transacao,referente,categoria_nome,especie,valor,data,data_text,created_at')
+          .gte('data', `${startDate}T00:00:00+00:00`)
+          .lte('data', `${endDate}T23:59:59+00:00`)
+          .order('data', { ascending: true }),
+        supabase
+          .from('transacoes')
+          .select('id,tipo_transacao,referente,categoria_nome,especie,valor,data,data_text,created_at')
+          .gte('data', `${startOfYear}T00:00:00+00:00`)
+          .lte('data', `${endOfYear}T23:59:59+00:00`)
+          .order('data', { ascending: true })
+      ]);
+
+      if (resPeriodo.error) throw resPeriodo.error;
+      if (resAnual.error) throw resAnual.error;
+
+      setTransacoes((resPeriodo.data ?? []) as Transacao[]);
+      setTransacoesAnuais((resAnual.data ?? []) as Transacao[]);
     } catch (err) {
       console.error('Erro ao buscar transações:', err);
     } finally {
@@ -99,6 +132,43 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
   }, [startDate, endDate]);
 
   useEffect(() => { fetchTransacoes(); }, [fetchTransacoes]);
+
+  // ── Realtime subscription — transacoes ───────────────────────
+  useEffect(() => {
+    // Definimos o canal
+    const channel = supabase
+      .channel('transacoes_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',           // INSERT | UPDATE | DELETE
+          schema: 'public',
+          table: 'transacoes',
+          filter: `user_id=eq.${session.user.id}`,
+        },
+        (payload) => {
+          console.log('Realtime payload recebido:', payload);
+          // Pisca o badge "Ao vivo"
+          setRealtimeFlash(true);
+          if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+          flashTimerRef.current = setTimeout(() => setRealtimeFlash(false), 2000);
+          
+          // Recarrega os dados
+          fetchTransacoes();
+        }
+      )
+      .subscribe((status) => {
+        console.log('Realtime channel status:', status);
+        if (status === 'SUBSCRIBED') {
+          console.log('Canal inscrito e pronto!');
+        }
+      });
+
+    return () => {
+      if (flashTimerRef.current) clearTimeout(flashTimerRef.current);
+      supabase.removeChannel(channel);
+    };
+  }, [session.user.id, fetchTransacoes]);
 
   // ── Carrega avatar do perfil ──────────────────────────────
   useEffect(() => {
@@ -110,15 +180,15 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
   // ── Categorias e Espécies disponíveis (derivadas dos dados carregados) ──
   const availableCats = React.useMemo(() => {
     const set = new Set<string>();
-    transacoes.forEach(t => { if (t.categoria_nome) set.add(t.categoria_nome); });
+    transacoesAnuais.forEach(t => { if (t.categoria_nome) set.add(t.categoria_nome); });
     return Array.from(set).sort();
-  }, [transacoes]);
+  }, [transacoesAnuais]);
 
   const availableEsps = React.useMemo(() => {
     const set = new Set<string>();
-    transacoes.forEach(t => { if (t.especie) set.add(t.especie); });
+    transacoesAnuais.forEach(t => { if (t.especie) set.add(t.especie); });
     return Array.from(set).sort();
-  }, [transacoes]);
+  }, [transacoesAnuais]);
 
   // ── Aplica filtro (Categoria e Espécie) no frontend ──────────────────
   const filteredTransacoes = transacoes.filter(t => {
@@ -136,13 +206,25 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
   const saldo         = totalReceitas - totalDespesas;
   const taxaEconomia  = totalReceitas > 0 ? ((saldo / totalReceitas) * 100) : 0;
 
-  // Dados por mês (filteredTransacoes)
+  // Dados anuais filtrados por categoria/espécie para o gráfico evolutivo
+  const filteredAnuais = transacoesAnuais.filter(t => {
+    const matchCat = selectedCat ? t.categoria_nome === selectedCat : true;
+    const matchEsp = selectedEsp ? t.especie === selectedEsp : true;
+    return matchCat && matchEsp;
+  });
+
+  // Dados por mês (filteredAnuais) - P/ o Gráfico Evolutivo
   const monthlyMap: Record<string, { key: string; mes: string; receitas: number; despesas: number }> = {};
-  filteredTransacoes.forEach(t => {
+
+  filteredAnuais.forEach(t => {
     const d = new Date(t.data ?? t.created_at);
     const key = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
     const label = `${months[d.getUTCMonth()]}/${String(d.getUTCFullYear()).slice(2)}`;
-    if (!monthlyMap[key]) monthlyMap[key] = { key, mes: label, receitas: 0, despesas: 0 };
+    
+    if (!monthlyMap[key]) {
+      monthlyMap[key] = { key, mes: label, receitas: 0, despesas: 0 };
+    }
+    
     if (t.tipo_transacao === 'RECEITAS') monthlyMap[key].receitas += Number(t.valor);
     else                                 monthlyMap[key].despesas += Number(t.valor);
   });
@@ -158,6 +240,19 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
     .map(([name, value]) => ({ name, value }))
     .sort((a, b) => b.value - a.value)
     .slice(0, 8);
+
+  // Despesas por Espécie (filteredTransacoes)
+  const espMap: Record<string, number> = {};
+  filteredTransacoes.filter(t => t.tipo_transacao === 'DESPESAS').forEach(t => {
+    const esp = t.especie ?? 'Não Informado';
+    espMap[esp] = (espMap[esp] ?? 0) + Number(t.valor);
+  });
+  const donutData = Object.entries(espMap)
+    .map(([name, value]) => ({ name, value }))
+    .sort((a, b) => b.value - a.value);
+
+  const topEsp = donutData.length > 0 ? donutData[0] : null;
+  const pctTopEsp = topEsp && totalDespesas > 0 ? Math.round((topEsp.value / totalDespesas) * 100) : 0;
 
   // Últimas transações
   const recentTransacoes = [...filteredTransacoes]
@@ -242,6 +337,27 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
         <div className="dashboard-header__title">
           <Activity size={18} style={{ color: 'var(--color-brand-cyan)' }} />
           <span style={{ fontSize: '18px', fontWeight: 600, color: 'var(--color-text-primary)' }}>Visão Geral Financeira</span>
+
+          {/* Badge Realtime */}
+          <AnimatePresence>
+            <motion.div
+              key="realtime-badge"
+              initial={{ opacity: 0.6, scale: 0.95 }}
+              animate={{ opacity: realtimeFlash ? 1 : 0.7, scale: realtimeFlash ? 1.06 : 1 }}
+              transition={{ duration: 0.3 }}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 5,
+                background: realtimeFlash ? '#00c89630' : '#ffffff10',
+                border: `1px solid ${realtimeFlash ? '#00c896' : '#ffffff20'}`,
+                borderRadius: 20, padding: '3px 10px', fontSize: 11,
+                color: realtimeFlash ? '#00c896' : 'var(--color-text-muted)',
+                transition: 'all 0.3s ease',
+              }}
+            >
+              <Zap size={11} fill={realtimeFlash ? '#00c896' : 'none'} />
+              Ao vivo
+            </motion.div>
+          </AnimatePresence>
         </div>
 
         <div className="dashboard-header__right">
@@ -344,10 +460,15 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
             </select>
           </div>
 
-          <button className="btn btn--secondary btn--auto" onClick={fetchTransacoes} disabled={loading}>
-            <RefreshCw size={14} className={loading ? 'spin' : ''} />
-            {loading ? 'Carregando...' : 'Atualizar'}
-          </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button className="btn btn--secondary btn--auto" onClick={handleMesAtual} title="Selecionar mês atual">
+              <Calendar size={14} /> Mês Atual
+            </button>
+            <button className="btn btn--secondary btn--auto" onClick={fetchTransacoes} disabled={loading}>
+              <RefreshCw size={14} className={loading ? 'spin' : ''} />
+              {loading ? 'Carregando...' : 'Atualizar'}
+            </button>
+          </div>
 
           <span className="filter-total">
             {filteredTransacoes.length} transações
@@ -455,8 +576,8 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
           )}
         </motion.div>
 
-        {/* ════ LINHA INFERIOR: Pizza + Transações recentes ════ */}
-        <div className="dashboard-bottom">
+        {/* ════ LINHA INFERIOR: Pizza + Pizza Especie + Transações recentes ════ */}
+        <div className="dashboard-bottom" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: 20, alignItems: 'start' }}>
 
           {/* Pizza por categoria */}
           <motion.div className="chart-card" variants={fadeUp} custom={6} initial="hidden" animate="visible">
@@ -510,6 +631,66 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
                       </div>
                     );
                   })}
+                </div>
+              </div>
+            )}
+          </motion.div>
+
+          {/* Gráfico Donut de Espécies */}
+          <motion.div className="chart-card" variants={fadeUp} custom={6.5} initial="hidden" animate="visible" style={{ display: 'flex', flexDirection: 'column' }}>
+            <div className="chart-card__header" style={{ marginBottom: 20 }}>
+              <div>
+                <h2 className="chart-card__title">Despesas por Espécie</h2>
+                <p className="chart-card__subtitle">Distribuição por método</p>
+              </div>
+              <CreditCard size={16} style={{ color: 'var(--color-brand-cyan)' }} />
+            </div>
+
+            {donutData.length === 0 ? (
+              <EmptyState message="Nenhuma despesa registrada" />
+            ) : (
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                <div style={{ position: 'relative', width: 220, height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={donutData}
+                        cx="50%" cy="50%"
+                        innerRadius={65} outerRadius={105}
+                        cornerRadius={14}
+                        stroke="none"
+                        paddingAngle={4}
+                        dataKey="value"
+                      >
+                        {donutData.map((_, i) => (
+                          <Cell key={i} fill={COLORS_PIE[i % COLORS_PIE.length]} />
+                        ))}
+                      </Pie>
+                      <Tooltip content={<PieTooltip />} />
+                    </PieChart>
+                  </ResponsiveContainer>
+
+                  {/* Texto central do Donut */}
+                  {topEsp && (
+                    <div style={{ position: 'absolute', textAlign: 'center', pointerEvents: 'none', display: 'flex', flexDirection: 'column' }}>
+                      <span style={{ fontSize: 32, fontWeight: 800, color: 'var(--color-text-primary)', lineHeight: 1.1 }}>
+                        {pctTopEsp}%
+                      </span>
+                      <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', fontWeight: 500 }}>
+                        {topEsp.name}
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Legendas horizontais */}
+                <div style={{ display: 'flex', justifyContent: 'center', flexWrap: 'wrap', gap: '8px 16px', marginTop: 30 }}>
+                  {donutData.map((item, i) => (
+                    <div key={item.name} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ width: 12, height: 12, borderRadius: '50%', background: COLORS_PIE[i % COLORS_PIE.length], flexShrink: 0 }} />
+                      <span style={{ fontSize: 13, color: 'var(--color-text-primary)', fontWeight: 500 }}>{item.name}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
