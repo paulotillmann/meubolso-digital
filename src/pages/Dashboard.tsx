@@ -13,6 +13,7 @@ import {
 import { supabase, authHelpers } from '../lib/supabase';
 import type { Session } from '@supabase/supabase-js';
 import ModalTransacao from '../components/ModalTransacao';
+import ModalEspecies from '../components/ModalEspecies';
 import ThemeToggle from '../components/ThemeToggle';
 
 // ── Tipos ──────────────────────────────────────────────────────
@@ -22,10 +23,17 @@ interface Transacao {
   referente: string;
   categoria_nome: string | null;
   especie: string | null;
+  especie_id: string | null;
   valor: number;
   data: string | null;
   data_text: string | null;
   created_at: string;
+}
+
+interface Especie {
+  id: string;
+  descricao: string;
+  nao_calcula_saldo: boolean;
 }
 
 interface SummaryCard {
@@ -49,8 +57,8 @@ const shortFmt = (v: number) => {
 const months = ['Jan','Fev','Mar','Abr','Mai','Jun','Jul','Ago','Set','Out','Nov','Dez'];
 
 const COLORS_PIE = [
-  '#00c896','#22d3ee','#a78bfa','#fb923c','#f472b6',
-  '#34d399','#60a5fa','#facc15','#f87171','#94a3b8',
+  '#dc2626', '#f87171', '#991b1b', '#fb923c', '#f43f5e',
+  '#ef4444', '#b91c1c', '#f97316', '#7f1d1d', '#be123c',
 ];
 
 // ── Componente principal ───────────────────────────────────────
@@ -67,6 +75,8 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
   const [activeChart, setActiveChart] = useState<'area' | 'bar'>('area');
   const [avatarUrl, setAvatarUrl]   = useState<string | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEspeciesModalOpen, setIsEspeciesModalOpen] = useState(false);
+  const [especiesList, setEspeciesList] = useState<Especie[]>([]);
   const [realtimeFlash, setRealtimeFlash] = useState(false); // pisca ao receber evento
   const flashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -104,26 +114,31 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
       const startOfYear = `${currentYear}-01-01`;
       const endOfYear = `${currentYear}-12-31`;
 
-      const [resPeriodo, resAnual] = await Promise.all([
+      const [resPeriodo, resAnual, resEspecies] = await Promise.all([
         supabase
           .from('transacoes')
-          .select('id,tipo_transacao,referente,categoria_nome,especie,valor,data,data_text,created_at')
+          .select('id,tipo_transacao,referente,categoria_nome,especie,especie_id,valor,data,data_text,created_at')
           .gte('data', `${startDate}T00:00:00+00:00`)
           .lte('data', `${endDate}T23:59:59+00:00`)
           .order('data', { ascending: true }),
         supabase
           .from('transacoes')
-          .select('id,tipo_transacao,referente,categoria_nome,especie,valor,data,data_text,created_at')
+          .select('id,tipo_transacao,referente,categoria_nome,especie,especie_id,valor,data,data_text,created_at')
           .gte('data', `${startOfYear}T00:00:00+00:00`)
           .lte('data', `${endOfYear}T23:59:59+00:00`)
-          .order('data', { ascending: true })
+          .order('data', { ascending: true }),
+        supabase
+          .from('especies')
+          .select('id,descricao,nao_calcula_saldo')
       ]);
 
       if (resPeriodo.error) throw resPeriodo.error;
       if (resAnual.error) throw resAnual.error;
+      if (resEspecies.error) throw resEspecies.error;
 
       setTransacoes((resPeriodo.data ?? []) as Transacao[]);
       setTransacoesAnuais((resAnual.data ?? []) as Transacao[]);
+      setEspeciesList((resEspecies.data ?? []) as Especie[]);
     } catch (err) {
       console.error('Erro ao buscar transações:', err);
     } finally {
@@ -197,9 +212,16 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
     return matchCat && matchEsp;
   });
 
+  // ── IDs de espécies que não devem compor saldo (via FK) ─────
+  const ignoredEspecieIds = React.useMemo(() => {
+    return new Set(especiesList.filter(e => e.nao_calcula_saldo).map(e => e.id));
+  }, [especiesList]);
+
+  const isIgnoredTx = (t: Transacao) => t.especie_id != null && ignoredEspecieIds.has(t.especie_id);
+
   // ── Cálculos derivados (usa filteredTransacoes) ─────────────────
-  const receitas  = filteredTransacoes.filter(t => t.tipo_transacao === 'RECEITAS');
-  const despesas  = filteredTransacoes.filter(t => t.tipo_transacao === 'DESPESAS');
+  const receitas  = filteredTransacoes.filter(t => t.tipo_transacao === 'RECEITAS' && !isIgnoredTx(t));
+  const despesas  = filteredTransacoes.filter(t => t.tipo_transacao === 'DESPESAS' && !isIgnoredTx(t));
 
   const totalReceitas = receitas.reduce((s, t) => s + Number(t.valor), 0);
   const totalDespesas = despesas.reduce((s, t) => s + Number(t.valor), 0);
@@ -225,12 +247,13 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
       monthlyMap[key] = { key, mes: label, receitas: 0, despesas: 0 };
     }
     
+    // Contabiliza tudo nos gráficos mensais
     if (t.tipo_transacao === 'RECEITAS') monthlyMap[key].receitas += Number(t.valor);
     else                                 monthlyMap[key].despesas += Number(t.valor);
   });
   const monthlyData = Object.values(monthlyMap).sort((a, b) => a.key.localeCompare(b.key));
 
-  // Despesas por categoria (filteredTransacoes)
+  // Despesas por categoria (Exibe TODAS no gráfico conforme pedido)
   const catMap: Record<string, number> = {};
   filteredTransacoes.filter(t => t.tipo_transacao === 'DESPESAS').forEach(t => {
     const cat = t.categoria_nome ?? 'Outros';
@@ -241,7 +264,7 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
     .sort((a, b) => b.value - a.value)
     .slice(0, 8);
 
-  // Despesas por Espécie (filteredTransacoes)
+  // Despesas por Espécie (Exibe TODAS no gráfico conforme pedido)
   const espMap: Record<string, number> = {};
   filteredTransacoes.filter(t => t.tipo_transacao === 'DESPESAS').forEach(t => {
     const esp = t.especie ?? 'Não Informado';
@@ -361,6 +384,13 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
         </div>
 
         <div className="dashboard-header__right">
+          <button
+            className="btn btn--secondary btn--auto"
+            style={{ fontSize: 13, gap: 6 }}
+            onClick={() => setIsEspeciesModalOpen(true)}
+          >
+            <CreditCard size={16} /> Espécies
+          </button>
           <button
             className="btn btn--primary btn--auto"
             style={{ fontSize: 13, gap: 6 }}
@@ -720,18 +750,30 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
                     const dateVal = val.includes('T') ? val : `${val}T12:00:00`;
                     return new Date(dateVal);
                   })();
+                  const isIgnored = isIgnoredTx(t);
                   return (
-                    <div key={t.id} className="tx-row">
+                    <div key={t.id} className="tx-row" style={{ opacity: isIgnored ? 0.75 : 1 }}>
                       <div className="tx-row__icon" style={{ background: isRec ? '#00c89620' : '#f8717120', color: isRec ? '#00c896' : '#f87171' }}>
                         {isRec ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <p className="tx-row__label">{t.referente}</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <p className="tx-row__label">{t.referente}</p>
+                          {isIgnored && (
+                            <span style={{ fontSize: 9, background: 'var(--color-bg-body)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)', padding: '1px 5px', borderRadius: 4, textTransform: 'uppercase' }}>
+                              Off-Saldo
+                            </span>
+                          )}
+                        </div>
                         <p className="tx-row__cat">
                           {t.categoria_nome ?? '—'} <span style={{ opacity: 0.6 }}>({t.especie ?? '—'})</span> &bull; {d.toLocaleDateString('pt-BR')}
                         </p>
                       </div>
-                      <span className="tx-row__value" style={{ color: isRec ? '#00c896' : '#f87171' }}>
+                      <span className="tx-row__value" style={{ 
+                        color: isRec ? '#00c896' : '#f87171',
+                        textDecoration: isIgnored ? 'line-through' : 'none',
+                        opacity: isIgnored ? 0.6 : 1
+                      }}>
                         {isRec ? '+' : '-'}{fmt(Number(t.valor))}
                       </span>
                     </div>
@@ -762,6 +804,16 @@ const Dashboard: React.FC<DashboardProps> = ({ session, onOpenProfile, onOpenTra
           onClose={() => setIsModalOpen(false)}
           onSuccess={() => {
             setIsModalOpen(false);
+            fetchTransacoes();
+          }}
+        />
+      )}
+
+      {/* Modal de Manutenção de Espécies */}
+      {isEspeciesModalOpen && (
+        <ModalEspecies
+          onClose={() => {
+            setIsEspeciesModalOpen(false);
             fetchTransacoes();
           }}
         />

@@ -20,10 +20,17 @@ interface Transacao {
   referente: string;
   categoria_nome: string | null;
   especie: string | null;
+  especie_id: string | null;
   valor: number;
   data: string | null;
   data_text: string | null;
   created_at: string;
+}
+
+interface Especie {
+  id: string;
+  descricao: string;
+  nao_calcula_saldo: boolean;
 }
 
 interface TransacoesProps {
@@ -41,6 +48,7 @@ const ITEMS_PER_PAGE = 15;
 const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
   // Estado de dados
   const [transacoes, setTransacoes] = useState<Transacao[]>([]);
+  const [especiesList, setEspeciesList] = useState<Especie[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -86,15 +94,23 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
     setLoading(true);
     setError('');
     try {
-      const { data, error: fetchError } = await supabase
-        .from('transacoes')
-        .select('id,tipo_transacao,referente,categoria_nome,especie,valor,data,data_text,created_at')
-        .gte('data', `${startDate}T00:00:00+00:00`)
-        .lte('data', `${endDate}T23:59:59+00:00`)
-        .order('data', { ascending: false });
+      const [resTrans, resEsp] = await Promise.all([
+        supabase
+          .from('transacoes')
+          .select('id,tipo_transacao,referente,categoria_nome,especie,especie_id,valor,data,data_text,created_at')
+          .gte('data', `${startDate}T00:00:00+00:00`)
+          .lte('data', `${endDate}T23:59:59+00:00`)
+          .order('data', { ascending: false }),
+        supabase
+          .from('especies')
+          .select('id,descricao,nao_calcula_saldo')
+      ]);
 
-      if (fetchError) throw fetchError;
-      setTransacoes((data ?? []) as Transacao[]);
+      if (resTrans.error) throw resTrans.error;
+      if (resEsp.error) throw resEsp.error;
+
+      setTransacoes((resTrans.data ?? []) as Transacao[]);
+      setEspeciesList((resEsp.data ?? []) as Especie[]);
       setCurrentPage(1);
     } catch (err: any) {
       console.error(err);
@@ -131,14 +147,25 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
     });
   }, [transacoes, busca, selectedTipo, selectedCat, selectedEsp]);
 
-  // Totais do filtro
+  // ── IDs de espécies que não devem compor saldo (via FK) ─────
+  const ignoredEspecieIds = React.useMemo(() => {
+    return new Set(especiesList.filter(e => e.nao_calcula_saldo).map(e => e.id));
+  }, [especiesList]);
+
+  const isIgnoredTx = (t: Transacao) => t.especie_id != null && ignoredEspecieIds.has(t.especie_id);
+
+  // Totais do filtro (considerando apenas as que compõem saldo)
   const totalReceitas = useMemo(
-    () => filtered.filter(t => t.tipo_transacao === 'RECEITAS').reduce((s, t) => s + Number(t.valor), 0),
-    [filtered]
+    () => filtered
+      .filter(t => t.tipo_transacao === 'RECEITAS' && !isIgnoredTx(t))
+      .reduce((s, t) => s + Number(t.valor), 0),
+    [filtered, ignoredEspecieIds]
   );
   const totalDespesas = useMemo(
-    () => filtered.filter(t => t.tipo_transacao === 'DESPESAS').reduce((s, t) => s + Number(t.valor), 0),
-    [filtered]
+    () => filtered
+      .filter(t => t.tipo_transacao === 'DESPESAS' && !isIgnoredTx(t))
+      .reduce((s, t) => s + Number(t.valor), 0),
+    [filtered, ignoredEspecieIds]
   );
 
   // ── Exportação ────────────────────────────────────────────────
@@ -503,6 +530,7 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
                       exit={{ opacity: 0, x: 8 }}
                       transition={{ delay: i * 0.02, duration: 0.25 }}
                       layout
+                      style={{ opacity: isIgnoredTx(t) ? 0.7 : 1 }}
                     >
                       {/* Ícone tipo */}
                       <div style={{ flex: '0 0 38px', display: 'flex', alignItems: 'center' }}>
@@ -513,12 +541,19 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
                           {isRec ? <ArrowUpRight size={13} /> : <ArrowDownRight size={13} />}
                         </div>
                       </div>
-
+ 
                       {/* Referente */}
                       <div style={{ flex: 2, minWidth: 0 }}>
-                        <p className="tx-cell-label">{t.referente}</p>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <p className="tx-cell-label">{t.referente}</p>
+                          {isIgnoredTx(t) && (
+                            <span style={{ fontSize: 9, background: 'var(--color-bg-body)', border: '1px solid var(--color-border)', color: 'var(--color-text-muted)', padding: '1px 5px', borderRadius: 4, textTransform: 'uppercase' }}>
+                              Off-Saldo
+                            </span>
+                          )}
+                        </div>
                       </div>
-
+ 
                       {/* Categoria */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         {t.categoria_nome ? (
@@ -527,26 +562,30 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
                           <span style={{ color: 'var(--color-text-muted)', fontSize: 12 }}>—</span>
                         )}
                       </div>
-
+ 
                       {/* Espécie */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>
                           {t.especie ?? '—'}
                         </span>
                       </div>
-
+ 
                       {/* Data */}
                       <div style={{ flex: '0 0 110px', textAlign: 'center' }}>
                         <span style={{ fontSize: 12, color: 'var(--color-text-secondary)' }}>{dataTx}</span>
                       </div>
-
+ 
                       {/* Valor */}
                       <div style={{ flex: '0 0 140px', textAlign: 'right' }}>
-                        <span className="tx-value" style={{ color: isRec ? '#00c896' : '#f87171' }}>
+                        <span className="tx-value" style={{ 
+                          color: isRec ? '#00c896' : '#f87171',
+                          textDecoration: isIgnoredTx(t) ? 'line-through' : 'none',
+                          opacity: isIgnoredTx(t) ? 0.6 : 1
+                        }}>
                           {isRec ? '+' : '-'}{fmt(Number(t.valor))}
                         </span>
                       </div>
-
+ 
                       {/* Ações */}
                       <div style={{ flex: '0 0 100px', display: 'flex', justifyContent: 'center', gap: 6 }}>
                         <button

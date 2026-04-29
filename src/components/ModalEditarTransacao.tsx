@@ -9,6 +9,7 @@ interface Transacao {
   referente: string;
   categoria_nome: string | null;
   especie: string | null;
+  especie_id: string | null;
   valor: number;
   data: string | null;
   data_text: string | null;
@@ -21,7 +22,7 @@ interface ModalEditarTransacaoProps {
   onSuccess: () => void;
 }
 
-const especiesValidas = ['PIX', 'cartão de crédito', 'cartão de débito', 'dinheiro', 'boleto', 'cheque'];
+
 
 // ── Helpers Máscara Moeda ──────────────────────────────────────
 const maskCurrency = (v: string) => {
@@ -44,10 +45,14 @@ const ModalEditarTransacao: React.FC<ModalEditarTransacaoProps> = ({ transacao, 
   const [dataStr, setDataStr]           = useState(transacao.data ? transacao.data.split('T')[0] : '');
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState('');
+  const [especiesValidas, setEspeciesValidas] = useState<{id: string; descricao: string}[]>([]);
 
-  // Bloqueia scroll do body enquanto modal está aberto
+  // Bloqueia scroll do body e carrega espécies do banco
   useEffect(() => {
     document.body.style.overflow = 'hidden';
+    supabase.from('especies').select('id,descricao').order('descricao').then(({ data }) => {
+      if (data) setEspeciesValidas(data);
+    });
     return () => { document.body.style.overflow = ''; };
   }, []);
 
@@ -63,12 +68,14 @@ const ModalEditarTransacao: React.FC<ModalEditarTransacaoProps> = ({ transacao, 
 
     setLoading(true);
     try {
+      const especieObj = especiesValidas.find(e => e.descricao === especie);
       const updates = {
         tipo_transacao: tipo,
         referente: referente.trim(),
         valor: valorNum,
         categoria_nome: categoriaNome.trim(),
         especie,
+        especie_id: especieObj?.id ?? null,
         data: dataStr,
         data_text: new Date(dataStr + 'T12:00:00').toLocaleDateString('pt-BR'),
       };
@@ -197,7 +204,7 @@ const ModalEditarTransacao: React.FC<ModalEditarTransacaoProps> = ({ transacao, 
                   style={{ paddingLeft: 'var(--spacing-md)' }}
                 >
                   {especiesValidas.map(esp => (
-                    <option key={esp} value={esp}>{esp}</option>
+                    <option key={esp.id} value={esp.descricao}>{esp.descricao}</option>
                   ))}
                 </select>
               </div>

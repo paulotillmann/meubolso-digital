@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, PlusCircle, MinusCircle, AlertCircle } from 'lucide-react';
 import { supabase } from '../lib/supabase';
@@ -30,7 +30,16 @@ const ModalTransacao: React.FC<ModalTransacaoProps> = ({ userId, onClose, onSucc
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const especiesValidas = ['PIX', 'cartão de crédito', 'cartão de débito', 'dinheiro', 'boleto', 'cheque'];
+  const [especiesValidas, setEspeciesValidas] = useState<{id: string; descricao: string}[]>([]);
+
+  useEffect(() => {
+    supabase.from('especies').select('id,descricao').order('descricao').then(({ data }) => {
+      if (data) {
+        setEspeciesValidas(data);
+        if (data.length > 0) setEspecie(data[0].descricao);
+      }
+    });
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -44,6 +53,7 @@ const ModalTransacao: React.FC<ModalTransacaoProps> = ({ userId, onClose, onSucc
 
     setLoading(true);
     try {
+      const especieObj = especiesValidas.find(e => e.descricao === especie);
       const novaTransacao = {
         user_id: userId,
         tipo_transacao: tipo,
@@ -51,6 +61,7 @@ const ModalTransacao: React.FC<ModalTransacaoProps> = ({ userId, onClose, onSucc
         valor: valorNum,
         categoria_nome: categoriaNome.trim(),
         especie,
+        especie_id: especieObj?.id ?? null,
         data: dataStr,
         data_text: new Date(dataStr).toLocaleDateString('pt-BR'),
       };
@@ -159,7 +170,7 @@ const ModalTransacao: React.FC<ModalTransacaoProps> = ({ userId, onClose, onSucc
                 <label className="form-label">Espécie</label>
                 <select className="form-input" value={especie} onChange={e => setEspecie(e.target.value)}>
                   {especiesValidas.map(esp => (
-                    <option key={esp} value={esp}>{esp}</option>
+                    <option key={esp.id} value={esp.descricao}>{esp.descricao}</option>
                   ))}
                 </select>
               </div>

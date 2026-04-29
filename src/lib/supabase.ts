@@ -31,6 +31,7 @@ export interface Transacao {
   categoria_id: string | null;
   categoria_nome: string | null;
   especie: string | null;
+  especie_id: string | null;
   valor: number;
   data: string | null;
   data_text: string | null;
