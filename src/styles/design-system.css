@@ -904,8 +904,8 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
-  padding: var(--spacing-xl);
-  padding-top: calc(70px + var(--spacing-xl)); /* Ajuste para conter o header fixo de 70px */
+  padding: var(--spacing-lg);
+  padding-top: calc(70px + var(--spacing-lg)); /* Ajuste para conter o header fixo de 70px */
   max-width: 1400px;
   width: 100%;
   margin: 0 auto;

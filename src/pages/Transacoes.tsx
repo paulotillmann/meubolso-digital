@@ -154,19 +154,33 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
 
   const isIgnoredTx = (t: Transacao) => t.especie_id != null && ignoredEspecieIds.has(t.especie_id);
 
-  // Totais do filtro (considerando apenas as que compõem saldo)
-  const totalReceitas = useMemo(
-    () => filtered
+  // Totais do filtro para Exibição (mostra TUDO que está filtrado)
+  const { totalReceitas, receitasCount } = useMemo(() => {
+    const recs = filtered.filter(t => t.tipo_transacao === 'RECEITAS');
+    return {
+      totalReceitas: recs.reduce((s, t) => s + Number(t.valor), 0),
+      receitasCount: recs.length
+    };
+  }, [filtered]);
+
+  const { totalDespesas, despesasCount } = useMemo(() => {
+    const desps = filtered.filter(t => t.tipo_transacao === 'DESPESAS');
+    return {
+      totalDespesas: desps.reduce((s, t) => s + Number(t.valor), 0),
+      despesasCount: desps.length
+    };
+  }, [filtered]);
+
+  // Totais para calcular o Saldo (ignora as espécies configuradas como nao_calcula_saldo)
+  const saldoCalculado = useMemo(() => {
+    const rec = filtered
       .filter(t => t.tipo_transacao === 'RECEITAS' && !isIgnoredTx(t))
-      .reduce((s, t) => s + Number(t.valor), 0),
-    [filtered, ignoredEspecieIds]
-  );
-  const totalDespesas = useMemo(
-    () => filtered
+      .reduce((s, t) => s + Number(t.valor), 0);
+    const desp = filtered
       .filter(t => t.tipo_transacao === 'DESPESAS' && !isIgnoredTx(t))
-      .reduce((s, t) => s + Number(t.valor), 0),
-    [filtered, ignoredEspecieIds]
-  );
+      .reduce((s, t) => s + Number(t.valor), 0);
+    return rec - desp;
+  }, [filtered, ignoredEspecieIds]);
 
   // ── Exportação ────────────────────────────────────────────────
   const exportarCSV = () => {
@@ -210,7 +224,7 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
     doc.text(`Total Filtrado: ${filtered.length} transações`, 14, 34);
     doc.text(`Receitas: ${fmt(totalReceitas)}`, 14, 40);
     doc.text(`Despesas: ${fmt(totalDespesas)}`, 14, 46);
-    doc.text(`Saldo do Período: ${fmt(totalReceitas - totalDespesas)}`, 14, 52);
+    doc.text(`Saldo do Período: ${fmt(saldoCalculado)}`, 14, 52);
 
     const tableColumn = ["Data", "Referente", "Categoria", "Espécie", "Tipo", "Valor"];
     const tableRows = filtered.map(t => {
@@ -304,19 +318,20 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
 
       <main className="dashboard-main">
 
+
         {/* ════ BARRA DE FILTROS ════ */}
         <motion.div
           className="tx-filters-bar"
           variants={fadeUp} custom={0} initial="hidden" animate="visible"
         >
           {/* Busca por referente */}
-          <div className="tx-search-wrapper">
+          <div className="tx-search-wrapper" style={{ minWidth: 'auto', flex: '0 0 180px' }}>
             <Search size={15} className="tx-search-icon" />
             <input
               id="tx-busca"
               type="text"
               className="filter-input tx-search-input"
-              placeholder="Buscar por referente / descrição…"
+              placeholder="Buscar..."
               value={busca}
               onChange={e => setBusca(e.target.value)}
             />
@@ -392,73 +407,60 @@ const Transacoes: React.FC<TransacoesProps> = ({ session, onBack }) => {
               {availableEsps.map(e => <option key={e} value={e}>{e}</option>)}
             </select>
           </div>
-
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, flexShrink: 0 }}>
-            <button
-              className="btn btn--secondary btn--auto"
-              onClick={handleMesAtual}
-              title="Selecionar mês atual"
-            >
-              <Calendar size={14} /> Mês Atual
-            </button>
-            <button
-              className="btn btn--secondary btn--auto"
-              onClick={fetchTransacoes}
-              disabled={loading}
-            >
-              <RefreshCw size={14} className={loading ? 'spin' : ''} />
-              {loading ? 'Carregando…' : 'Atualizar'}
-            </button>
-          </div>
         </motion.div>
 
-        {/* ════ RESUMO ════ */}
-        <motion.div className="tx-summary-row" variants={fadeUp} custom={1} initial="hidden" animate="visible">
-          <div className="tx-summary-chip tx-summary-chip--total">
-            <span className="tx-summary-chip__label">Total filtrado</span>
-            <span className="tx-summary-chip__value">{filtered.length} transações</span>
-          </div>
-          <div className="tx-summary-chip tx-summary-chip--rec">
-            <TrendingUp size={13} />
-            <span className="tx-summary-chip__label">Receitas</span>
-            <span className="tx-summary-chip__value" style={{ color: '#00c896' }}>{fmt(totalReceitas)}</span>
-          </div>
-          <div className="tx-summary-chip tx-summary-chip--desp">
-            <TrendingDown size={13} />
-            <span className="tx-summary-chip__label">Despesas</span>
-            <span className="tx-summary-chip__value" style={{ color: '#f87171' }}>{fmt(totalDespesas)}</span>
-          </div>
-          <div className="tx-summary-chip">
-            <span className="tx-summary-chip__label">Saldo</span>
-            <span
-              className="tx-summary-chip__value"
-              style={{ color: totalReceitas - totalDespesas >= 0 ? '#22d3ee' : '#fb923c' }}
-            >
-              {fmt(totalReceitas - totalDespesas)}
-            </span>
+        {/* ════ RESUMO E AÇÕES ════ */}
+        <motion.div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', flexWrap: 'wrap', gap: '24px' }} variants={fadeUp} custom={1} initial="hidden" animate="visible">
+          
+          {/* CARDS */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '16px' }}>
+            {/* RECEITAS CARD */}
+            <div className="kpi-card" style={{ padding: '20px 24px', minWidth: '240px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '24px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-secondary)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  Receitas
+                </span>
+                <div style={{ background: '#00c89615', borderRadius: '10px', width: '34px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <TrendingUp size={18} style={{ color: '#00c896' }} />
+                </div>
+              </div>
+              <div style={{ marginTop: '12px' }}>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#00c896', letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
+                  {fmt(totalReceitas)}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px' }}>
+                  <ArrowUpRight size={14} style={{ color: '#00c896' }} />
+                  <span style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
+                    {receitasCount} lançamentos
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* DESPESAS CARD */}
+            <div className="kpi-card" style={{ padding: '20px 24px', minWidth: '240px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '24px' }}>
+                <span style={{ fontSize: '13px', fontWeight: 600, color: 'var(--color-text-secondary)', letterSpacing: '0.05em', textTransform: 'uppercase' }}>
+                  Despesas
+                </span>
+                <div style={{ background: '#f8717115', borderRadius: '10px', width: '34px', height: '34px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  <TrendingDown size={18} style={{ color: '#f87171' }} />
+                </div>
+              </div>
+              <div style={{ marginTop: '12px' }}>
+                <div style={{ fontSize: '28px', fontWeight: 800, color: '#f87171', letterSpacing: '-0.02em', whiteSpace: 'nowrap' }}>
+                  {fmt(totalDespesas)}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '8px' }}>
+                  <ArrowUpRight size={14} style={{ color: '#f87171' }} />
+                  <span style={{ fontSize: '13px', color: 'var(--color-text-muted)' }}>
+                    {despesasCount} lançamentos
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
 
-          {/* Botões de exportação */}
-          <div style={{ marginLeft: 'auto', display: 'flex', gap: 8, alignItems: 'center' }}>
-            <button
-              className="btn btn--secondary btn--auto"
-              onClick={exportarCSV}
-              disabled={filtered.length === 0}
-              style={{ padding: '8px 14px', fontSize: 13, height: 42, background: 'var(--color-bg-card)' }}
-              title="Exportar dados para Excel (CSV)"
-            >
-              <FileText size={14} /> CSV
-            </button>
-            <button
-              className="btn btn--secondary btn--auto"
-              onClick={exportarPDF}
-              disabled={filtered.length === 0}
-              style={{ padding: '8px 14px', fontSize: 13, height: 42, background: 'var(--color-bg-card)' }}
-              title="Baixar relatório em PDF"
-            >
-              <FileDown size={14} /> PDF
-            </button>
-          </div>
         </motion.div>
 
         {/* ════ TABELA ════ */}

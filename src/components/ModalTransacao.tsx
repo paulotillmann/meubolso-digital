@@ -31,6 +31,8 @@ const ModalTransacao: React.FC<ModalTransacaoProps> = ({ userId, onClose, onSucc
   const [error, setError] = useState('');
 
   const [especiesValidas, setEspeciesValidas] = useState<{id: string; descricao: string}[]>([]);
+  const [categoriasValidas, setCategoriasValidas] = useState<string[]>([]);
+  const [showCatDropdown, setShowCatDropdown] = useState(false);
 
   useEffect(() => {
     supabase.from('especies').select('id,descricao').order('descricao').then(({ data }) => {
@@ -39,7 +41,14 @@ const ModalTransacao: React.FC<ModalTransacaoProps> = ({ userId, onClose, onSucc
         if (data.length > 0) setEspecie(data[0].descricao);
       }
     });
-  }, []);
+
+    supabase.from('transacoes').select('categoria_nome').eq('user_id', userId).not('categoria_nome', 'is', null).then(({ data }) => {
+      if (data) {
+        const cats = Array.from(new Set(data.map((d: any) => d.categoria_nome).filter(Boolean))) as string[];
+        setCategoriasValidas(cats.sort());
+      }
+    });
+  }, [userId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -155,16 +164,38 @@ const ModalTransacao: React.FC<ModalTransacaoProps> = ({ userId, onClose, onSucc
             </div>
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div className="form-group" style={{ marginBottom: 0 }}>
+              <div className="form-group" style={{ marginBottom: 0, position: 'relative' }}>
                 <label className="form-label">Categoria</label>
-                <input type="text" className="form-input" list="cat-list" value={categoriaNome} onChange={e => setCategoriaNome(e.target.value)} placeholder="Ex: Casa, Lazer" />
-                <datalist id="cat-list">
-                  <option value="Alimentação" />
-                  <option value="Casa" />
-                  <option value="Transporte" />
-                  <option value="Lazer" />
-                  <option value="Salário" />
-                </datalist>
+                <input 
+                  type="text" className="form-input" 
+                  value={categoriaNome} 
+                  onChange={e => { setCategoriaNome(e.target.value); setShowCatDropdown(true); }}
+                  onFocus={() => setShowCatDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowCatDropdown(false), 200)}
+                  placeholder="Ex: Casa, Lazer" 
+                />
+                {showCatDropdown && categoriasValidas.length > 0 && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0,
+                    background: 'var(--color-bg-card)', border: '1px solid var(--color-border)',
+                    borderRadius: 8, marginTop: 4, zIndex: 50, maxHeight: 160, overflowY: 'auto',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                  }}>
+                    {categoriasValidas.map(cat => (
+                      <div 
+                        key={cat} 
+                        style={{ padding: '10px 12px', cursor: 'pointer', color: 'var(--color-text-primary)', borderBottom: '1px solid var(--color-border)' }}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setCategoriaNome(cat);
+                          setShowCatDropdown(false);
+                        }}
+                      >
+                        {cat}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Espécie</label>

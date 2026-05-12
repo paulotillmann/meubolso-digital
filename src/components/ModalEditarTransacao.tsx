@@ -46,13 +46,26 @@ const ModalEditarTransacao: React.FC<ModalEditarTransacaoProps> = ({ transacao, 
   const [loading, setLoading]           = useState(false);
   const [error, setError]               = useState('');
   const [especiesValidas, setEspeciesValidas] = useState<{id: string; descricao: string}[]>([]);
+  const [categoriasValidas, setCategoriasValidas] = useState<string[]>([]);
+  const [showCatDropdown, setShowCatDropdown] = useState(false);
 
-  // Bloqueia scroll do body e carrega espécies do banco
+  // Bloqueia scroll do body e carrega espécies e categorias do banco
   useEffect(() => {
     document.body.style.overflow = 'hidden';
+    
+    // Carrega espécies
     supabase.from('especies').select('id,descricao').order('descricao').then(({ data }) => {
       if (data) setEspeciesValidas(data);
     });
+
+    // Carrega categorias únicas já lançadas pelo usuário
+    supabase.from('transacoes').select('categoria_nome').not('categoria_nome', 'is', null).then(({ data }) => {
+      if (data) {
+        const cats = Array.from(new Set(data.map((d: any) => d.categoria_nome).filter(Boolean))) as string[];
+        setCategoriasValidas(cats.sort());
+      }
+    });
+
     return () => { document.body.style.overflow = ''; };
   }, []);
 
@@ -177,24 +190,39 @@ const ModalEditarTransacao: React.FC<ModalEditarTransacaoProps> = ({ transacao, 
 
             {/* Categoria + Espécie */}
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-              <div className="form-group" style={{ marginBottom: 0 }}>
+              <div className="form-group" style={{ marginBottom: 0, position: 'relative' }}>
                 <label className="form-label">Categoria</label>
                 <input
                   type="text" className="form-input"
-                  list="cat-list-edit"
-                  value={categoriaNome} onChange={e => setCategoriaNome(e.target.value)}
+                  value={categoriaNome} 
+                  onChange={e => { setCategoriaNome(e.target.value); setShowCatDropdown(true); }}
+                  onFocus={() => setShowCatDropdown(true)}
+                  onBlur={() => setTimeout(() => setShowCatDropdown(false), 200)}
                   placeholder="Ex: Casa, Lazer"
                   style={{ paddingLeft: 'var(--spacing-md)' }}
                 />
-                <datalist id="cat-list-edit">
-                  <option value="Alimentação" />
-                  <option value="Casa" />
-                  <option value="Transporte" />
-                  <option value="Lazer" />
-                  <option value="Salário" />
-                  <option value="Saúde" />
-                  <option value="Educação" />
-                </datalist>
+                {showCatDropdown && categoriasValidas.length > 0 && (
+                  <div style={{
+                    position: 'absolute', top: '100%', left: 0, right: 0,
+                    background: 'var(--color-bg-card)', border: '1px solid var(--color-border)',
+                    borderRadius: 8, marginTop: 4, zIndex: 50, maxHeight: 160, overflowY: 'auto',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                  }}>
+                    {categoriasValidas.map(cat => (
+                      <div 
+                        key={cat} 
+                        style={{ padding: '10px 12px', cursor: 'pointer', color: 'var(--color-text-primary)', borderBottom: '1px solid var(--color-border)' }}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          setCategoriaNome(cat);
+                          setShowCatDropdown(false);
+                        }}
+                      >
+                        {cat}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Espécie</label>
